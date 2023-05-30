@@ -11,13 +11,15 @@ class build_ext(build_ext_orig):
 
     def get_ext_filename(self, ext_name):
         return super().get_ext_filename(ext_name)
+    
+# '-std=c++11'
 
 setup(
     include_package_data=True,
     ext_modules= [
             Extension(
             "svgtools",
-            ["src/svgtools.cpp"],
+            ["src/svgtools.cpp"]
         ),
     ],
     cmdclass={"build_ext": build_ext},

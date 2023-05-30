@@ -1,4 +1,5 @@
 import svgtools
+import json
 
 content = '''
 <svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">
@@ -23,7 +24,26 @@ content = '''
 
 nodes = svgtools.parse(content)
 
-print(type(nodes))
+# Prints the formatted dictionary
+print(json.dumps(nodes,sort_keys=True, indent=4))
 
-for node in nodes:
-  print(node)
+test1 = '''
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+  <rect x="10" y="10" width="180" height="180" fill="lightgray" />
+  
+  <g transform="translate(100,100)">
+    <circle cx="0" cy="0" r="80" fill="blue" />
+    
+    <g transform="translate(-40,-40)">
+      <rect x="0" y="0" width="80" height="80" fill="red" />
+      <text x="40" y="60" text-anchor="middle" fill="white">Nested</text>
+    </g>
+  </g>
+</svg>
+'''
+
+print(json.dumps(svgtools.parse(test1),sort_keys=True, indent=4))
+
+s = svgtools.to_path_str(content)
+
+print(s)

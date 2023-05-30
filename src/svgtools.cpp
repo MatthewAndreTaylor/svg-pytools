@@ -17,26 +17,25 @@ typedef enum {
   POLYLINE,
   POLYGON,
   PATH,
-  CONTAINER
+  CONTAINER_OPEN,
+  CONTAINER_CLOSE
 } PrimitiveType;
 
 typedef struct {
+  std::string key;
+  std::string value;
+} Pair;
+
+typedef struct Node {
   PrimitiveType type;
   std::string dString;
-  std::vector<std::tuple<std::string, std::string>> attr;
+  std::vector<Pair> attr;
 } PathNode;
 
-std::regex rectRegex(".*<rect", std::regex_constants::icase);
-std::regex circleRegex(".*<circle", std::regex_constants::icase);
-std::regex ellipseRegex(".*<ellipse", std::regex_constants::icase);
-std::regex lineRegex(".*<line", std::regex_constants::icase);
-std::regex polylineRegex(".*<polyline", std::regex_constants::icase);
-std::regex polygonRegex(".*<polygon", std::regex_constants::icase);
-std::regex pathRegex(".*<path", std::regex_constants::icase);
-
+std::regex primitiveRegex(".*<(rect|circle|ellipse|line|polyline|polygon|path)",
+                          std::regex_constants::icase);
 std::regex attrRegex(R"(([a-zA-Z][a-zA-Z0-9_-]*)=\"([^\"]*)\")",
                      std::regex_constants::icase);
-
 std::regex closingtagRegex(R"(</\w+>)", std::regex_constants::icase);
 
 PathNode ParsePrimitive(std::string &input) {
@@ -44,31 +43,43 @@ PathNode ParsePrimitive(std::string &input) {
   std::smatch match;
 
   PathNode p;
-  if (std::regex_search(input, match, rectRegex)) {
-    p.type = RECTANGLE;
-  } else if (std::regex_search(input, match, circleRegex)) {
-    p.type = CIRCLE;
-  } else if (std::regex_search(input, match, ellipseRegex)) {
-    p.type = ELLIPSE;
-  } else if (std::regex_search(input, match, lineRegex)) {
-    p.type = LINE;
-  } else if (std::regex_search(input, match, polylineRegex)) {
-    p.type = POLYLINE;
-  } else if (std::regex_search(input, match, polygonRegex)) {
-    p.type = POLYGON;
-  } else if (std::regex_search(input, match, pathRegex)) {
-    p.type = PATH;
-  } else {
-    p.type = CONTAINER;
+  if (std::regex_search(input, match, primitiveRegex)) {
+    std::string primitiveType = match.str(1);
+    if (primitiveType == "rect") {
+      p.type = RECTANGLE;
+    }
+    else if (primitiveType == "circle") {
+      p.type = CIRCLE;
+    }
+    else if (primitiveType == "ellipse") {
+      p.type = ELLIPSE;
+    }
+    else if (primitiveType == "line") {
+      p.type = LINE;
+    }
+    else if (primitiveType == "polyline") {
+      p.type = POLYLINE;
+    }
+    else if (primitiveType == "polygon") {
+      p.type = POLYGON;
+    }
+    else if (primitiveType == "path") {
+      p.type = PATH;
+    }
+  }
+  else if (std::regex_search(input, closingtagRegex)) {
+    p.type = CONTAINER_CLOSE;
     return p;
+  } else {
+    p.type = CONTAINER_OPEN;
   }
 
   float x = 0, y = 0, width = 0, height = 0;
   std::string::size_type pos = (match.size() > 0) ? match[0].length() : 0;
 
-  std::string attr = input.substr(pos, input.length() - 2);
+  std::string attributes = input.substr(pos);
 
-  std::sregex_iterator it(attr.begin(), attr.end(), attrRegex);
+  std::sregex_iterator it(attributes.begin(), attributes.end(), attrRegex);
   std::sregex_iterator end;
 
   while (it != end) {
@@ -76,76 +87,93 @@ PathNode ParsePrimitive(std::string &input) {
     std::string attrName = match.str(1);
     std::string attrValue = match.str(2);
 
-    if (p.type == RECTANGLE) {
-      if (attrName == "x") {
-        x = std::stof(attrValue);
-      } else if (attrName == "y") {
-        y = std::stof(attrValue);
-      } else if (attrName == "width") {
-        width = std::stof(attrValue);
-      } else if (attrName == "height") {
-        height = std::stof(attrValue);
-      } else {
-        p.attr.push_back(std::make_tuple(attrName, attrValue));
-      }
-    } else if (p.type == CIRCLE) {
-      if (attrName == "cx") {
-        x = std::stof(attrValue);
-      } else if (attrName == "cy") {
-        y = std::stof(attrValue);
-      } else if (attrName == "r") {
-        width = std::stof(attrValue);
-      } else {
-        p.attr.push_back(std::make_tuple(attrName, attrValue));
-      }
-    } else if (p.type == ELLIPSE) {
-      if (attrName == "cx") {
-        x = std::stof(attrValue);
-      } else if (attrName == "cy") {
-        y = std::stof(attrValue);
-      } else if (attrName == "rx") {
-        width = std::stof(attrValue);
-      } else if (attrName == "ry") {
-        height = std::stof(attrValue);
-      } else {
-        p.attr.push_back(std::make_tuple(attrName, attrValue));
-      }
-    } else if (p.type == LINE) {
-      if (attrName == "x1") {
-        x = std::stof(attrValue);
-      } else if (attrName == "y1") {
-        y = std::stof(attrValue);
-      } else if (attrName == "x2") {
-        width = std::stof(attrValue);
-      } else if (attrName == "y2") {
-        height = std::stof(attrValue);
-      } else {
-        p.attr.push_back(std::make_tuple(attrName, attrValue));
-      }
-    } else if (p.type == POLYLINE) {
-      if (attrName == "points") {
-        std::string point =
-            std::regex_replace(attrValue, std::regex(" "), " L");
-        ss << "M" << point;
-      } else {
-        p.attr.push_back(std::make_tuple(attrName, attrValue));
-      }
-    } else if (p.type == POLYGON) {
-      if (attrName == "points") {
-        std::string point =
-            std::regex_replace(attrValue, std::regex(" "), " L");
-        ss << "M" << point << " Z";
-      } else {
-        p.attr.push_back(std::make_tuple(attrName, attrValue));
-      }
-    } else if (p.type == PATH) {
-      if (attrName == "d") {
-        ss << attrValue;
-      } else {
-        p.attr.push_back(std::make_tuple(attrName, attrValue));
-      }
-    }
+    switch (p.type)
+    {
+      case RECTANGLE:
+        if (attrName == "x") {
+          x = std::stof(attrValue);
+        } else if (attrName == "y") {
+          y = std::stof(attrValue);
+        } else if (attrName == "width") {
+          width = std::stof(attrValue);
+        } else if (attrName == "height") {
+          height = std::stof(attrValue);
+        } else {
+          p.attr.push_back({std::move(attrName), std::move(attrValue)});
+        }
+        break;
+      
+      case CIRCLE:
+        if (attrName == "cx") {
+          x = std::stof(attrValue);
+        } else if (attrName == "cy") {
+          y = std::stof(attrValue);
+        } else if (attrName == "r") {
+          width = std::stof(attrValue);
+        } else {
+          p.attr.push_back({std::move(attrName), std::move(attrValue)});
+        }
+        break;
 
+      case ELLIPSE:
+        if (attrName == "cx") {
+          x = std::stof(attrValue);
+        } else if (attrName == "cy") {
+          y = std::stof(attrValue);
+        } else if (attrName == "rx") {
+          width = std::stof(attrValue);
+        } else if (attrName == "ry") {
+          height = std::stof(attrValue);
+        } else {
+          p.attr.push_back({std::move(attrName), std::move(attrValue)});
+        }
+        break;
+
+      case LINE:
+        if (attrName == "x1") {
+          x = std::stof(attrValue);
+        } else if (attrName == "y1") {
+          y = std::stof(attrValue);
+        } else if (attrName == "x2") {
+          width = std::stof(attrValue);
+        } else if (attrName == "y2") {
+          height = std::stof(attrValue);
+        } else {
+          p.attr.push_back({std::move(attrName), std::move(attrValue)});
+        }
+        break;
+
+      case POLYLINE:
+        if (attrName == "points") {
+          std::string point =
+              std::regex_replace(attrValue, std::regex(" "), " L");
+          ss << "M" << point;
+        } else {
+          p.attr.push_back({std::move(attrName), std::move(attrValue)});
+        }
+        break;
+
+      case POLYGON:
+        if (attrName == "points") {
+          std::string point =
+              std::regex_replace(attrValue, std::regex(" "), " L");
+          ss << "M" << point << " Z";
+        } else {
+          p.attr.push_back({std::move(attrName), std::move(attrValue)});
+        }
+        break;
+
+      case PATH:
+        if (attrName == "d") {
+          ss << attrValue;
+        } else {
+          p.attr.push_back({std::move(attrName), std::move(attrValue)});
+        }
+        break;
+      
+      default:
+        p.attr.push_back({std::move(attrName), std::move(attrValue)});
+    }
     ++it;
   }
   if (p.type == RECTANGLE) {
@@ -199,41 +227,90 @@ static PyObject *svgtools_parse(PyObject *self, PyObject *args) {
   // Call the splitSVGNodes and ParsePrimitive functions to process the SVG
   std::vector<std::string> nodes = splitSVGNodes(content);
 
-  // Create a Python list to store the processed nodes
-  PyObject *nodeList = PyList_New(nodes.size());
-  Py_INCREF(nodeList);
+  PyObject *childKey = PyUnicode_FromString("container");
 
-  // Iterate over the nodes and parse each one using the ParsePrimitive function
+  PyObject *dict = PyDict_New();
+  Py_INCREF(dict);
+
+  PyObject *currDict = dict;
+  std::vector<PyObject*> containerStack;
+  containerStack.push_back(dict);
+
   for (size_t i = 0; i < nodes.size(); i++) {
     std::string &node = nodes[i];
     PathNode parsedNode = ParsePrimitive(node);
 
-    // Create a Python dictionary to represent the parsed node
-    PyObject *dict = PyDict_New();
-    Py_INCREF(dict);
+    if (parsedNode.type == CONTAINER_OPEN) {
+      PyObject *d = PyDict_New();
+      Py_INCREF(d);
 
-    // Set the 'dString' key in the dictionary to the dString value
-    PyObject *dStringValue = PyUnicode_FromString(parsedNode.dString.c_str());
-    PyDict_SetItemString(dict, "d", dStringValue);
+      for (size_t j = 0; j < parsedNode.attr.size(); j++) {
+        const std::string &key = parsedNode.attr[j].key;
+        const std::string &attrVal = parsedNode.attr[j].value;
+        PyObject *val = PyUnicode_FromString(attrVal.c_str());
+        PyDict_SetItemString(d, key.c_str(), val);
+      }
 
-    // Iterate over the attribute strings and append them to the attrList
-    for (size_t j = 0; j < parsedNode.attr.size(); j++) {
-      const std::string &key = std::get<0>(parsedNode.attr[j]);
-      const std::string &attrVal = std::get<1>(parsedNode.attr[j]);
-      PyObject *val = PyUnicode_FromString(attrVal.c_str());
-      PyDict_SetItemString(dict, key.c_str(), val);
+      PyObject* children = PyDict_SetDefault(currDict, childKey, PyList_New(0));
+      PyList_Append(children, d);
+      currDict = d;
+    } else if (parsedNode.type == CONTAINER_CLOSE) {
+      containerStack.pop_back();
+      currDict = containerStack.back();
+    } else {
+      if (!parsedNode.dString.empty()) {
+        PyObject *dom = PyDict_New();
+        PyObject *dStringValue = PyUnicode_FromString(parsedNode.dString.c_str());
+        PyDict_SetItemString(dom, "d", dStringValue);
+
+        for (size_t j = 0; j < parsedNode.attr.size(); j++) {
+          const std::string &key = parsedNode.attr[j].key;
+          const std::string &attrVal = parsedNode.attr[j].value;
+          PyObject *val = PyUnicode_FromString(attrVal.c_str());
+          PyDict_SetItemString(dom, key.c_str(), val);
+        }
+
+        PyObject* children = PyDict_SetDefault(currDict, childKey, PyList_New(0));
+        PyList_Append(children, dom);
+      }
     }
-
-    // Set the dictionary as an item in the nodeList
-    PyList_SetItem(nodeList, i, dict);
   }
 
-  // Return the Python list containing the processed nodes
-  return nodeList;
+  return containerStack.front();
+}
+
+PyDoc_STRVAR(svgtools_to_path_str_doc, "Return a new svg where each primitive is converted to a path.");
+static PyObject *svgtools_to_path_str(PyObject *self, PyObject *args) {
+  const char *svgContent;
+
+  if (!PyArg_ParseTuple(args, "s", &svgContent)) {
+    return NULL;
+  }
+  
+  std::string content(svgContent);
+
+  // Call the splitSVGNodes and ParsePrimitive functions to process the SVG
+  std::vector<std::string> svgNodes = splitSVGNodes(content);
+
+  std::stringstream result;
+  result << "<svg xmlns=\"http://www.w3.org/2000/svg\">" << std::endl;
+  for (std::string& node : svgNodes) {
+        PathNode p = ParsePrimitive(node);
+        if (!p.dString.empty()) {
+            result << "<path d=\"" << p.dString << "\"";
+            for (Pair pair : p.attr) {
+                result << " " << pair.key << "=\"" << pair.value << "\"";
+            }
+            result << "/>\n";
+        }
+    }
+    result << "</svg>";
+    return PyUnicode_FromString(result.str().c_str());
 }
 
 static PyMethodDef SvgParserMethods[] = {
     {"parse", svgtools_parse, METH_VARARGS, svgtools_parse_doc},
+    {"to_path_str", svgtools_to_path_str, METH_VARARGS, svgtools_to_path_str_doc},
     {NULL, NULL, 0, NULL}};
 
 static struct PyModuleDef svgparsermodule = {PyModuleDef_HEAD_INIT, "svgtools",
