@@ -18,7 +18,8 @@ typedef enum {
   POLYGON,
   PATH,
   CONTAINER_OPEN,
-  CONTAINER_CLOSE
+  CONTAINER_CLOSE,
+  OTHER
 } PrimitiveType;
 
 typedef struct {
@@ -37,6 +38,8 @@ std::regex primitiveRegex(".*<(rect|circle|ellipse|line|polyline|polygon|path)",
 std::regex attrRegex(R"(([a-zA-Z][a-zA-Z0-9_-]*)=\"([^\"]*)\")",
                      std::regex_constants::icase);
 std::regex closingtagRegex(R"(</\w+>)", std::regex_constants::icase);
+
+std::regex otherRegex(".*<([a-zA-Z_]+)", std::regex_constants::icase);
 
 PathNode ParsePrimitive(std::string &input) {
   std::stringstream ss;
@@ -68,7 +71,11 @@ PathNode ParsePrimitive(std::string &input) {
     }
   }
   else if (std::regex_search(input, closingtagRegex)) {
-    p.type = CONTAINER_CLOSE;
+    if (std::regex_search(input, otherRegex)) {
+      p.type = OTHER;
+    } else {
+      p.type = CONTAINER_CLOSE;
+    }
     return p;
   } else {
     p.type = CONTAINER_OPEN;
@@ -292,11 +299,39 @@ static PyObject *svgtools_to_path_str(PyObject *self, PyObject *args) {
   // Call the splitSVGNodes and ParsePrimitive functions to process the SVG
   std::vector<std::string> svgNodes = splitSVGNodes(content);
 
+  int counter = 0;
+
   std::stringstream result;
-  result << "<svg xmlns=\"http://www.w3.org/2000/svg\">" << std::endl;
   for (std::string& node : svgNodes) {
         PathNode p = ParsePrimitive(node);
-        if (!p.dString.empty()) {
+        if (p.type == CONTAINER_OPEN) {
+          if(counter == 0){
+            counter++;
+            result << "<svg";
+            for (Pair pair : p.attr) {
+                result << " " << pair.key << "=\"" << pair.value << "\"";
+            }
+            result << ">\n";
+          }
+          else {
+            counter++;
+            result << "<g";
+            for (Pair pair : p.attr) {
+                result << " " << pair.key << "=\"" << pair.value << "\"";
+            }
+            result << ">\n";
+          }
+        }
+        else if (p.type == CONTAINER_CLOSE) {
+          if(counter == 1){
+            result << "</svg>\n";
+          }
+          else {
+            counter--;
+            result << "</g>\n";
+          }
+        }
+        else if (p.type != OTHER) {
             result << "<path d=\"" << p.dString << "\"";
             for (Pair pair : p.attr) {
                 result << " " << pair.key << "=\"" << pair.value << "\"";
@@ -304,7 +339,6 @@ static PyObject *svgtools_to_path_str(PyObject *self, PyObject *args) {
             result << "/>\n";
         }
     }
-    result << "</svg>";
     return PyUnicode_FromString(result.str().c_str());
 }
 
